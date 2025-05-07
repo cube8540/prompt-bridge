@@ -38,6 +38,12 @@ _SQL_SERIES_INSERT = """
     returning id
  """
 
+_SQL_BOOK_UPDATE_SERIES_ID = """
+    update books.book
+    set series_id = %(series_id)s
+    where id = %(book_id)s
+"""
+
 
 def find_books_series_id_is_none(limit: int = 10) -> list[model.Book] | None:
     connection = db.connection()
@@ -46,6 +52,17 @@ def find_books_series_id_is_none(limit: int = 10) -> list[model.Book] | None:
         cursor.execute(_SQL_BOOK_SERIES_ID_NONE, {"limit": limit,})
 
         return list(map(_row_to_book, cursor.fetchall()))
+    finally:
+        connection.close()
+
+def update_book_series_id(book_id: int, series_id: int) -> int | None:
+    connection = db.connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(_SQL_BOOK_UPDATE_SERIES_ID, {"series_id": series_id, "book_id": book_id})
+        row_count = cursor.rowcount
+        connection.commit()
+        return row_count
     finally:
         connection.close()
 
