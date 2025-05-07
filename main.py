@@ -1,49 +1,46 @@
-import json
-from collections import namedtuple
-from openai import OpenAI
+import os
+from enum import Enum
+
+import dotenv
 from sentence_transformers import SentenceTransformer
 
-import psycopg
+from book import find_books_series_id_is_none, find_series_cosine_similarity, new_series, Series, Book
 
-from book.repo import BookRepository
-from config import load_config
 
-config = load_config()
-book_repository = BookRepository(config.db)
+class Env(Enum):
+    LOCAL = "local"
+    DEV = "dev"
+    PROD = "prod"
 
-books = book_repository.find_series_id_none(limit=10)
+def _get_env() -> Env:
+    env = os.getenv("PYTHON_ENV", "local").lower()
+    try:
+        return Env(env)
+    except ValueError:
+        return Env.LOCAL
 
-titles = []
-for book in books:
-    titles.append(book.title)
+def main():
+    env = _get_env()
+    dotenv.load_dotenv(f".env.{env.value}")
 
-client = OpenAI(api_key=config.openai.api_key)
+    books = find_books_series_id_is_none()
+    titles = list(map(lambda b: b.title, books)) # 이 부분을 타이틀 -> OpenAI 사용
 
-series_titles = []
-for title in titles:
-    response = client.responses.create(
-        model="gpt-4.1-2025-04-14",
-        input=[
-            {"role": "user", "content": title},
-        ],
-        previous_response_id=config.openai.previous_response_id
-    )
+    model = SentenceTransformer('nlpai-lab/KoE5')
+    embeddings = model.encode(titles).tolist()
 
-    output = json.loads(response.output_text, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
-    series_titles.append(output.t)
+    groups = []
+    for i, embedding in enumerate(embeddings):
+        book = books[i]
+        similar_series = find_series_cosine_similarity(embedding)
+        top = similar_series[0]
+        if len(similar_series) == 0 or top.score is None or top.score < 0.90:
+            series = Series(series_id = 0, name=book.title, vec=embedding)
+            series_id = new_series(series)
+            book.series_id = series_id
+        else:
+            book.series_id = top.series.id
 
-model = SentenceTransformer('nlpai-lab/KoE5')
-embeddings = model.encode(series_titles)
+        print(f"{book.title} = {book.series_id}")
 
-emb = []
-for embedding in embeddings:
-    emb.append(embedding.tolist())
-
-for idx, e in enumerate(emb):
-    title = series_titles[idx]
-    print(title, e)
-    cursor.execute("insert into books.series (name, vec) values (%s, %s)", (title, e))
-
-connection.commit()
-connection.close()
-print("done")
+main()
