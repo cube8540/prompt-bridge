@@ -1,14 +1,12 @@
-import json
 import os
-from collections import namedtuple
 from enum import Enum
 
 import dotenv
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 
-from book import find_books_series_id_is_none, find_series_cosine_similarity, new_series, Series, model, \
-    update_book_series_id
+import prompt
+from book import find_books_series_id_is_none, find_series_cosine_similarity, new_series, Series, update_book_series_id
 
 
 class Env(Enum):
@@ -23,33 +21,6 @@ def _get_env() -> Env:
     except ValueError:
         return Env.LOCAL
 
-class TitleExtracted:
-    def __init__(self, title: str, sub_title: str, episode: str):
-        self.title = title
-        self.sub_title = sub_title
-        self.episode = episode
-
-    def __str__(self):
-        if self.sub_title is not None:
-            return f"{self.title} ~{self.sub_title}~"
-        else:
-            return self.title
-
-def extract_title(client: OpenAI, book_title: int) -> TitleExtracted:
-    response = client.responses.create(
-        model="gpt-4.1-2025-04-14",
-        input=[
-            {"role": "user", "content": book_title},
-        ],
-        previous_response_id=os.getenv("OPENAI_PREVIOUS_RESPONSE_ID"),
-    )
-    output_json = json.loads(response.output_text, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
-    return TitleExtracted(
-        title=output_json.t,
-        sub_title=getattr(output_json, "s", None),
-        episode=getattr(output_json, "r", None)
-    )
-
 def create_series(title: str, embedding: list[float]) -> int | None:
     new = Series(
         series_id = 0,
@@ -62,18 +33,29 @@ def main():
     env = _get_env()
     dotenv.load_dotenv(f".env.{env.value}")
 
-    books = find_books_series_id_is_none(limit=99)
+    openapi_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    title_structs = list(map(lambda b: extract_title(client=openai_client, book_title=b.title), books))
-    titles = list(map(lambda t: str(t), title_structs))
+    books = find_books_series_id_is_none(limit=10)
+    series_prompt = prompt.SeriesPrompt(
+        client = openapi_client,
+        normalization_prompt_id = os.getenv("OPENAI_NORMALIZATION_PROMPT_ID")
+    )
+
+    normalizations = list(map(lambda b: series_prompt.normalization(b.title), books))
+    for normalization in normalizations:
+        print(f"normalized.title -> {normalization.title}")
+        print(f"normalized.sub_title -> {normalization.sub_title}")
+        print(f"normalized.episode -> {normalization.episode}")
+        print("----------------------------------------------------------")
+
+    series_titles = list(map(lambda n: n.title, normalizations))
 
     embedding_model = SentenceTransformer('nlpai-lab/KoE5')
-    embeddings = embedding_model.encode(titles).tolist()
+    embeddings = embedding_model.encode(series_titles).tolist()
 
     for i, embedding in enumerate(embeddings):
         book = books[i]
-        title = titles[i]
+        title = series_titles[i]
         similar_series = find_series_cosine_similarity(embedding)
         if len(similar_series) == 0:
             book.series_id = create_series(title, embedding)
@@ -85,6 +67,5 @@ def main():
                 book.series_id = top.series.id
 
         update_book_series_id(book.id, book.series_id)
-        print(f"{book.title}({title}) = {book.series_id}")
-
+        print(f"{book.title} -> ({title}) = {book.series_id}")
 main()
