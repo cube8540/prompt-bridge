@@ -1,10 +1,16 @@
 import datetime
 import typing
+from enum import Enum
+
+class Site(Enum):
+    NLGO = "nlgo"
+    ALADIN = "aladin"
+    NAVER = "naver"
 
 class Series:
     def __init__(self,
-                 series_id: int,
-                 name: str,
+                 series_id: int = 0,
+                 name: str = None,
                  isbn: str = None,
                  registered_at: datetime.datetime = None,
                  modified_at: datetime.datetime = None,
@@ -15,6 +21,17 @@ class Series:
         self.registered_at = registered_at
         self.modified_at = modified_at
         self.vec = vec
+
+class BookOriginData:
+    def __init__(self,
+                 book_id: int,
+                 site: Site,
+                 property_name: str,
+                 value: str):
+        self.book_id = book_id
+        self.site = site
+        self.property_name = property_name
+        self.value = value
 
 class Book:
     def __init__(self,
@@ -36,3 +53,9 @@ class Book:
         self.series_id = series_id
         self.registered_at = registered_at
         self.modified_at = modified_at
+        self.origin_data: typing.Dict[Site, list[BookOriginData]] = {}
+
+    def add_origin_data(self, origin_data: BookOriginData):
+        if origin_data.site not in self.origin_data:
+            self.origin_data[origin_data.site] = []
+        self.origin_data[origin_data.site].append(origin_data)
