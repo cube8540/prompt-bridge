@@ -34,6 +34,8 @@ class BookOriginData:
         self.value = value
 
 class Book:
+    _cached_series_isbn: str | None = None
+
     def __init__(self,
                  book_id: int,
                  isbn: str,
@@ -59,3 +61,18 @@ class Book:
         if origin_data.site not in self.origin_data:
             self.origin_data[origin_data.site] = []
         self.origin_data[origin_data.site].append(origin_data)
+
+    def retrieve_series_isbn(self) -> str | None:
+        if self._cached_series_isbn is not None:
+            return self._cached_series_isbn
+
+        nlgo_origin = self.origin_data.get(Site.NLGO)
+        if nlgo_origin is not None:
+            series_isbn_origin = next((o for o in nlgo_origin if o.property_name == "set_isbn"), None)
+            if series_isbn_origin is not None:
+                self._cached_series_isbn = series_isbn_origin.value
+                return self._cached_series_isbn
+            else:
+                return None
+        else:
+            return None
