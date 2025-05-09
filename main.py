@@ -1,7 +1,9 @@
+import logging.config
 import os
 from enum import Enum
 
 import dotenv
+import yaml
 from openai import OpenAI
 from psycopg_pool import ConnectionPool
 from sentence_transformers import SentenceTransformer
@@ -23,7 +25,17 @@ def _get_env() -> Env:
     except ValueError:
         return Env.LOCAL
 
-dotenv.load_dotenv(f".env.{_get_env().value}")
+env = _get_env()
+dotenv.load_dotenv(f".env.{env.value}")
+
+logging_file = f"logging.{env.value}.yaml"
+if os.path.exists(logging_file):
+    with open(logging_file, 'rt') as file:
+        logging_config = yaml.load(file.read(), Loader=yaml.FullLoader)
+        logging.config.dictConfig(logging_config)
+else:
+    logging.basicConfig(level=logging.INFO)
+    logging.warning(f"logging file {logging_file} not found")
 
 db_connection_info: str = f"host={os.getenv('DB_HOST')} port={os.getenv('DB_PORT')} dbname={os.getenv('DB_NAME')} user={os.getenv('DB_USERNAME')} password={os.getenv('DB_PASSWORD')}"
 db_connection_pool = ConnectionPool(
