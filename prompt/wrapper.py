@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import namedtuple
 
 from openai import OpenAI
@@ -11,12 +12,7 @@ class SeriesNormalization:
         self.episode = episode
 
     def __str__(self):
-        string = f"{self.title}"
-        if self.sub_title is not None:
-            string += f" ~{self.sub_title}~"
-        if self.episode is not None:
-            string += f" {self.episode}"
-        return string
+        return f"{self.title}/{self.sub_title}/{self.episode}"
 
 class SeriesPrompt:
     def __init__(self, client: OpenAI,
@@ -25,6 +21,7 @@ class SeriesPrompt:
         self.normalization_prompt_id = normalization_prompt_id
 
     def normalization(self, title: str) -> SeriesNormalization:
+        logging.debug(f"제목의 노이즈 제거를 요청 합니다.: {title}")
         response = self.client.responses.create(
             model="gpt-4.1-2025-04-14",
             input=[
@@ -32,6 +29,7 @@ class SeriesPrompt:
             ],
             previous_response_id=self.normalization_prompt_id,
         )
+        logging.debug(f"노이즈 제거 프롬프트 응답: {response}")
         output_json = json.loads(response.output_text, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
         return SeriesNormalization(
             title = output_json.t,

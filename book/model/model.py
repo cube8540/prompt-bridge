@@ -22,6 +22,9 @@ class Series:
         self.modified_at = modified_at
         self.vec = vec
 
+    def __str__(self):
+        return f"({self.id}) {self.name}"
+
 class BookOriginData:
     def __init__(self,
                  book_id: int,
@@ -76,3 +79,6 @@ class Book:
                 return None
         else:
             return None
+
+    def __str__(self):
+        return f"({self.id}/{self.isbn}){self.title}"
