@@ -6,6 +6,7 @@ class Site(Enum):
     NLGO = "nlgo"
     ALADIN = "aladin"
     NAVER = "naver"
+    KYOBO = "kyobo"
 
 class Series:
     def __init__(self,
