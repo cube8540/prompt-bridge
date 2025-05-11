@@ -3,7 +3,8 @@ import datetime
 import psycopg_pool
 from psycopg.rows import dict_row
 
-from book.model import Book, BookOriginData, Series
+from book.model import Book, BookOriginData, Series, Site
+
 
 class BookRepository:
     _SQL_SELECT_BOOK_SERIES_NONE: str = """
@@ -38,6 +39,34 @@ class BookRepository:
         where id = %(book_id)s
     """
 
+    _SQL_SELECT_BOOK_ISBN = """
+        select  id,
+                isbn,
+                title,
+                publisher_id,
+                scheduled_pub_date,
+                actual_pub_date,
+                series_id,
+                registered_at,
+                modified_at
+        from books.book
+        where isbn = ANY(%(isbn)s)
+    """
+
+    _SQL_SELECT_BOOK_SERIES_ID = """
+        select  id,
+                isbn,
+                title,
+                publisher_id,
+                scheduled_pub_date,
+                actual_pub_date,
+                series_id,
+                registered_at,
+                modified_at
+        from books.book
+        where series_id = %(series_id)s
+    """
+
     def __init__(self, pool: psycopg_pool.ConnectionPool):
         self._pool = pool
 
@@ -60,17 +89,29 @@ class BookRepository:
                 _conn.commit()
                 return _cur.rowcount
 
+    def find_book_by_isbn(self, isbn: list[str]) -> list[Book] | None:
+        with self._pool.connection() as _conn:
+            with _conn.cursor(row_factory=dict_row) as _cur:
+                _cur.execute(self._SQL_SELECT_BOOK_ISBN, {"isbn": isbn,})
+                return list(map(_row_to_book, _cur.fetchall()))
+
+    def find_book_by_series_id(self, series_id: int) -> list[Book] | None:
+        with self._pool.connection() as _conn:
+            with _conn.cursor(row_factory=dict_row) as _cur:
+                _cur.execute(self._SQL_SELECT_BOOK_SERIES_ID, {"series_id": series_id,})
+                return list(map(_row_to_book, _cur.fetchall()))
+
 class SeriesRepository:
-    _SQL_SELECT_COSINE_SIMILARITY = """
+    _SQL_SELECT_MAIN_TITLE_COSINE_SIMILARITY = """
         select  id,
                 name,
                 isbn,
-                vec,
-                1 - (vec <=>  %(vector)s) as score,
+                main_title_vec,
+                1 - (main_title_vec <=>  %(vector)s) as score,
                 registered_at,
                 modified_at
         from books.series
-        order by vec <=> %(vector)s
+        order by main_title_vec <=> %(vector)s
         limit %(limit)s
     """
 
@@ -78,7 +119,7 @@ class SeriesRepository:
         select  id,
                 name,
                 isbn,
-                vec,
+                main_title_vec,
                 registered_at,
                 modified_at
         from books.series
@@ -86,8 +127,8 @@ class SeriesRepository:
     """
 
     _SQL_INSERT = """
-        insert into books.series (name, isbn, vec, registered_at)
-        values (%(name)s, %(isbn)s, %(vec)s, %(registered_at)s)
+        insert into books.series (name, isbn, main_title_vec, registered_at)
+        values (%(name)s, %(isbn)s, %(main_title_vec)s, %(registered_at)s)
         returning id
     """
 
@@ -101,11 +142,11 @@ class SeriesRepository:
     def __init__(self, pool: psycopg_pool.ConnectionPool):
         self._pool = pool
 
-    def cosine_similarity(self, vector: list[float], limit: int = 5) -> list[tuple[Series, int]] | None:
+    def cosine_similarity(self, vec: list[float], limit: int = 5) -> list[tuple[Series, float]]:
         with self._pool.connection() as _conn:
             with _conn.cursor(row_factory=dict_row) as _cur:
-                _cur.execute(self._SQL_SELECT_COSINE_SIMILARITY, {"vector": str(vector), "limit": limit,})
-                return list(map(lambda row: (_row_to_series(row), row['score']), _cur.fetchall()))
+                _cur.execute(self._SQL_SELECT_MAIN_TITLE_COSINE_SIMILARITY, {"vector": str(vec), "limit": limit, })
+                return list(map(lambda row: (_row_to_series(row), float(row['score'] or 0.0)), _cur.fetchall()))
 
     def find_by_isbn(self, isbn: list[str]) -> list[Series] | None:
         with self._pool.connection() as _conn:
@@ -116,9 +157,14 @@ class SeriesRepository:
     def insert(self, series: Series) -> int | None:
         with self._pool.connection() as _conn:
             with _conn.cursor(row_factory=dict_row) as _cur:
-                _cur.execute(self._SQL_INSERT, { "name": series.name, "isbn": series.isbn, "vec": series.vec, "registered_at": datetime.datetime.now() })
+                _cur.execute(self._SQL_INSERT, {
+                    "name": series.name,
+                    "isbn": series.isbn,
+                    "main_title_vec": series.main_title_vec,
+                    "registered_at": datetime.datetime.now()
+                })
                 _conn.commit()
-                return _cur.fetchone()[0]
+                return _cur.fetchone()['id']
 
     def update_series_isbn(self, series_id: int, isbn: str) -> int | None:
         with self._pool.connection() as _conn:
@@ -135,7 +181,7 @@ def _row_to_series(row) -> Series:
         isbn= row['isbn'],
         registered_at = row['registered_at'],
         modified_at = row['modified_at'],
-        vec= row['vec']
+        main_title_vec= row['main_title_vec'],
     )
 
 def _row_to_book(row) -> Book:

@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 
 from book.db import BookRepository, SeriesRepository
 from book.model import Book, Series
+from book.series_retrieve import SeriesRetrieveStrategy
 from prompt import SeriesPrompt
 
 
@@ -11,17 +12,21 @@ class BookAutoSeriesScript:
     _series_match_score: float = 0.98
 
     def __init__(self,
-               book_repository: BookRepository,
-               series_repository: SeriesRepository,
-               series_prompt: SeriesPrompt,
-               transformer: SentenceTransformer):
+                 book_repository: BookRepository,
+                 series_repository: SeriesRepository,
+                 series_prompt: SeriesPrompt,
+                 series_retrieve_strategy: SeriesRetrieveStrategy,
+                 transformer: SentenceTransformer):
         self._book_repository = book_repository
         self._series_repository = series_repository
         self._series_prompt = series_prompt
+        self._series_retrieve_strategy = series_retrieve_strategy
         self._transformer = transformer
 
-    def run(self, limit: int = 10):
-        books = self._retrieve_books_series_none(limit)
+    def run(self,
+            isbn: list[str] | None = None,
+            limit: int = 10):
+        books = self._retrieve_books(isbn=isbn, limit=limit)
         for book in books:
             series_isbn = book.retrieve_series_isbn()
             if series_isbn is not None:
@@ -37,8 +42,13 @@ class BookAutoSeriesScript:
     def set_series_match_score(self, score: float):
         self._series_match_score = score
 
-    def _retrieve_books_series_none(self, limit: int = 10) -> list[Book] | None:
-        books = self._book_repository.find_series_id_none(limit = limit)
+    def _retrieve_books(self,
+                        isbn: list[str] | None = None,
+                        limit: int = 10) -> list[Book] | None:
+        if isbn is not None:
+            books = self._book_repository.find_book_by_isbn(isbn)
+        else:
+            books = self._book_repository.find_series_id_none(limit)
         book_map = {}
         book_ids = []
 
@@ -57,21 +67,14 @@ class BookAutoSeriesScript:
         normalize = self._series_prompt.normalization(book.title)
         logging.info(f"제목 노이즈 제거 완료: {book} -> {normalize}")
 
-        series_title_embedded = self._transformer.encode([normalize.title]).tolist()[0]
+        main_title_embedded = self._transformer.encode([normalize.text_to_embed()]).tolist()[0]
         series_isbn = book.retrieve_series_isbn()
 
-        similar_series = self._series_repository.cosine_similarity(series_title_embedded)
-        if len(similar_series) > 0 :
-            (top, score) = (similar_series[0])
-            if score >= self._series_match_score:
-                logging.info(f"이미 저장된 시리즈를 찾아 해당 시리즈 아이디를 반환합니다.: {book}/{normalize.title} -> {top} (스코어: {score})")
-                if top.isbn is None and series_isbn is not None:
-                    logging.info(f"시리즈의 ISBN을 업데이트 합니다.: {top} -> {series_isbn}")
-                    self._series_repository.update_series_isbn(top.id, series_isbn)
-                return top.id
-            else:
-                logging.info(f"{book}/{normalize.title} -> {top} 기준치({self._series_match_score}) 미달로 인한 시리즈 불일치 스코어: {score}")
+        (matched, find_series, score) = self._series_retrieve_strategy.retrieve(book, main_title_embedded)
+        if matched:
+            if find_series.isbn is None and series_isbn is not None:
+                self._series_repository.update_series_isbn(find_series.id, series_isbn)
+            return find_series.id
 
-        series = Series(name = normalize.title, vec = series_title_embedded, isbn = series_isbn)
-        logging.debug(f"새로운 시리즈를 생성 합니다. {series}")
-        return self._series_repository.insert(series)
+        new_series = Series(name=normalize.normalize_title(), isbn=series_isbn, main_title_vec=main_title_embedded)
+        return self._series_repository.insert(new_series)

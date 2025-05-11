@@ -15,13 +15,13 @@ class Series:
                  isbn: str = None,
                  registered_at: datetime.datetime = None,
                  modified_at: datetime.datetime = None,
-                 vec: typing.List[float] = None):
+                 main_title_vec: typing.List[float] = None,):
         self.id = series_id
         self.name = name
         self.isbn = isbn
         self.registered_at = registered_at
         self.modified_at = modified_at
-        self.vec = vec
+        self.main_title_vec = main_title_vec
 
     def __str__(self):
         return f"({self.id}) {self.name}"
