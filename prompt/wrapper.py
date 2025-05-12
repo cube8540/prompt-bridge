@@ -4,6 +4,7 @@ from collections import namedtuple
 
 from openai import OpenAI
 from openai.types.responses import EasyInputMessageParam, Response
+from pydantic import BaseModel
 
 
 class SeriesNormalization:
@@ -28,6 +29,11 @@ class SeriesNormalization:
     def __str__(self):
         return f"{self.title}/{self.sub_title}/{self.episode}"
 
+class _SeriesNormalizeResponse(BaseModel):
+    title: str
+    sub_title: str | None = None
+    episode: str | None = None
+
 class SimilarityFormat:
     def __init__(self,
                  title: str,
@@ -48,22 +54,26 @@ class SeriesPrompt:
 
     def normalization(self, title: str) -> SeriesNormalization:
         logging.debug(f"제목의 노이즈 제거를 요청 합니다.: {title}")
-        response = self._request_response_api(title, self.normalization_prompt_id)
+        response = self.client.responses.parse(
+            model="gpt-4.1-2025-04-14",
+            input=title,
+            previous_response_id=self.normalization_prompt_id,
+            text_format=_SeriesNormalizeResponse,
+        )
         logging.debug(f"노이즈 제거 프롬프트 응답: {response}")
-        output_json = json.loads(response.output_text, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
         return SeriesNormalization(
             origin = title,
-            title = output_json.t,
-            sub_title = getattr(output_json, "s", None),
-            episode = getattr(output_json, "e", None)
+            title = response.output_parsed.title,
+            sub_title = response.output_parsed.sub_title,
+            episode = response.output_parsed.episode,
         )
 
     def similarity(self, new_book: SimilarityFormat, exists_books: list[SimilarityFormat]) -> (bool, float):
         prompt = f"기존 상품 리스트:[{','.join([i.to_json() for i in exists_books])}]\n신간 정보:{new_book.to_json()}"
 
-        logging.debug(f"시리즈 유사도 검사를 요청 합니다. {prompt}")
-        response = self._request_response_api(prompt, self.similarity_prompt_id)
-        logging.debug(f"유사도 프롬프트 output: {response.output_text}")
+        logging.info(f"시리즈 유사도 검사를 요청 합니다. {prompt}")
+        response = self._request_response_api(prompt, self.similarity_prompt_id) # TODO parse로 변경하자...
+        logging.info(f"유사도 프롬프트 output: {response.output_text}")
 
         output_json = json.loads(response.output_text, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
         return output_json.m, output_json.s
