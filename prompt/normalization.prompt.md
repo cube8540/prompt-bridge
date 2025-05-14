@@ -79,3 +79,11 @@
 <assistant_response id="example-6">  
 블루 록  
 </assistant_response>
+
+<user_query id="example-7">  
+블루 아카이브 오피셜 아트웍스 2 (초판한정 스페셜 오리지널 티켓 1종 + 네컷사진 2종 + L홀더)  
+</user_query>
+
+<assistant_response id="example-7">  
+블루 아카이브  
+</assistant_response>

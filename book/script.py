@@ -67,7 +67,7 @@ class BookAutoSeriesScript:
         normalize = self._series_prompt.normalization(book.title)
         logging.info(f"제목 노이즈 제거 완료: {book} -> {normalize}")
 
-        main_title_embedded = self._transformer.encode([normalize.text_to_embed()]).tolist()[0]
+        main_title_embedded = self._transformer.encode([normalize.title]).tolist()[0]
         series_isbn = book.retrieve_series_isbn()
 
         (matched, find_series, score) = self._series_retrieve_strategy.retrieve(book, main_title_embedded)
@@ -76,5 +76,5 @@ class BookAutoSeriesScript:
                 self._series_repository.update_series_isbn(find_series.id, series_isbn)
             return find_series.id
 
-        new_series = Series(name=normalize.normalize_title(), isbn=series_isbn, main_title_vec=main_title_embedded)
+        new_series = Series(name=normalize.title, isbn=series_isbn, main_title_vec=main_title_embedded)
         return self._series_repository.insert(new_series)

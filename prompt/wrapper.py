@@ -8,31 +8,15 @@ from pydantic import BaseModel
 
 
 class SeriesNormalization:
-    def __init__(self, origin: str, title: str, sub_title: str, episode: str):
+    def __init__(self, origin: str, title: str):
         self.origin = origin
         self.title = title
-        self.sub_title = sub_title
-        self.episode = episode
-
-    def normalize_title(self):
-        if self.sub_title is not None:
-            return f"{self.title} ~{self.sub_title}~"
-        else:
-            return self.title
-
-    def text_to_embed(self):
-        if self.sub_title is not None:
-            return f"{self.title} {self.sub_title}"
-        else:
-            return self.title
 
     def __str__(self):
-        return f"{self.title}/{self.sub_title}/{self.episode}"
+        return self.title
 
 class _SeriesNormalizeResponse(BaseModel):
     title: str
-    sub_title: str | None = None
-    episode: str | None = None
 
 class SimilarityFormat:
     def __init__(self,
@@ -64,8 +48,6 @@ class SeriesPrompt:
         return SeriesNormalization(
             origin = title,
             title = response.output_parsed.title,
-            sub_title = response.output_parsed.sub_title,
-            episode = response.output_parsed.episode,
         )
 
     def similarity(self, new_book: SimilarityFormat, exists_books: list[SimilarityFormat]) -> (bool, float):
