@@ -10,23 +10,25 @@ class PromptCode(enum.Enum):
 
 class Prompt:
     code: PromptCode
+    mode: str
     last_dialogue_id: str
     description: str
 
-    def __init__(self, code: PromptCode, last_dialogue_id: str):
+    def __init__(self, code: PromptCode, model: str, last_dialogue_id: str):
         self.code = code
+        self.model = model
         self.last_dialogue_id = last_dialogue_id
 
     def set_description(self, description: str):
         self.description = description
 
     def __str__(self):
-        return f"code: {self.code}, last_dialogue_id: {self.last_dialogue_id}, description: {self.description}"
+        return f"code: {self.code}, model: {self.model}, last_dialogue_id: {self.last_dialogue_id}, description: {self.description}"
 
 
 class PromptRepository:
 
-    _SQL_FIND_PROMPT_BY_CODE = """SELECT code, last_dialogue_id, description FROM prompt.prompts WHERE code = %(code)s"""
+    _SQL_FIND_PROMPT_BY_CODE = """SELECT code, model, last_dialogue_id, description FROM prompt.prompts WHERE code = %(code)s"""
 
     def __init__(self, pool: psycopg_pool.ConnectionPool):
         self._pool = pool
@@ -38,6 +40,7 @@ class PromptRepository:
                 row = cur.fetchone()
                 prompt = Prompt(
                     code=PromptCode(row["code"].upper()),
+                    model=row["model"],
                     last_dialogue_id=row["last_dialogue_id"],
                 )
                 prompt.set_description(row["description"])

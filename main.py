@@ -27,12 +27,13 @@ app = Flask(__name__)
 @dataclasses.dataclass
 class _TitleNormalizeRequest:
     title: str
+    isbn: str           # 임시 추가
+    desc: str | None    # 임시 추가
+    price: int | None   # 임시 추가
 
 @dataclasses.dataclass
 class _TitleNormalizeResponse:
     title: str
-    sub_title: str | None
-    episode: str | None
 
 @app.post("/normalize")
 def normalize():
@@ -40,11 +41,7 @@ def normalize():
     _request = _TitleNormalizeRequest(**body)
 
     normalization = series_prompt.normalize(_request.title)
-    _response = _TitleNormalizeResponse(
-        title = normalization.title,
-        sub_title = normalization.sub_title,
-        episode = normalization.episode,
-    )
+    _response = _TitleNormalizeResponse(title = normalization.title)
 
     return jsonify(_response)
 
