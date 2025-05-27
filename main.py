@@ -2,6 +2,7 @@ import atexit
 import dataclasses
 import logging
 import os
+import typing
 
 from flask import Flask, request, jsonify
 from openai import OpenAI
@@ -9,6 +10,7 @@ from sentence_transformers import SentenceTransformer
 
 import cfg
 import prompt
+from prompt import NormalizeRequest
 
 runtime_env = cfg.get_runtime_env()
 cfg.set_global_logging_config(runtime_env)
@@ -22,28 +24,16 @@ series_prompt = prompt.series.Bridge(openai_client, prompt_repository)
 logging.info("nlpai-lab/KoE5 model loading...")
 transformer = SentenceTransformer('nlpai-lab/KoE5')
 logging.info("nlpai-lab/KoE5 model loading completed")
+
 app = Flask(__name__)
-
-@dataclasses.dataclass
-class _TitleNormalizeRequest:
-    title: str
-    isbn: str           # 임시 추가
-    desc: str | None    # 임시 추가
-    price: int | None   # 임시 추가
-
-@dataclasses.dataclass
-class _TitleNormalizeResponse:
-    title: str
 
 @app.post("/normalize")
 def normalize():
     body = request.get_json()
-    _request = _TitleNormalizeRequest(**body)
+    _request = NormalizeRequest(**body)
 
-    normalization = series_prompt.normalize(_request.title)
-    _response = _TitleNormalizeResponse(title = normalization.title)
-
-    return jsonify(_response)
+    normalization = series_prompt.normalize(_request)
+    return jsonify(normalization)
 
 @dataclasses.dataclass
 class _EmbeddingRequest:
