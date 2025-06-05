@@ -89,6 +89,64 @@ class _NormalizeModelResponse(BaseModel):
     프로그램에 직접 활용하지 않아야 한다.
     """
 
+@dataclasses.dataclass
+class SeriesSimilarBookInfo:
+    """도서의 시리즈 분류에 필요한 기본 정보를 담는 데이터 클래스
+
+    시리즈 분류 알고리즘에서 사용되는 도서의 핵심 정보인 제목, 출판사, 저자 정보를 포함한다.
+    모든 필드는 시리즈 판단에 중요한 요소로 활용된다.
+    """
+
+    title: str
+    """도서 제목"""
+
+    publisher: int
+    """출판사 아이디"""
+
+    author: str | None
+    """저자"""
+
+@dataclasses.dataclass
+class SeriesSimilarRequest:
+    """시리즈 도서 분류 요청을 위한 데이터 클래스
+
+    신간 도서 정보와 비교 대상이 되는 기존 시리즈의 도서 목록을 포함한다.
+    """
+
+    new: SeriesSimilarBookInfo
+    """분류하고자 하는 신간 도서의 정보"""
+
+    series: typing.List[SeriesSimilarBookInfo]
+    """비교 대상이 되는 기존 시리즈의 도서 목록"""
+
+@dataclasses.dataclass
+class SeriesSimilar:
+    """시리즈 소속 판단 결과를 담는 데이터 클래스
+
+    요청 하였던 신간 도서가 시리즈에 소속 되는지 여부를 저장한다.
+    """
+
+    result: bool
+    """시리즈 소속 여부 (True: 시리즈에 속함/False: 시리즈에 속하지 않음)"""
+
+    reason: str| None = None
+    """시리즈 판단 근거 설명"""
+
+class _SeriesSimilarResponse(BaseModel):
+    """시리즈 소속 여부 프로프트 응답 포멧"""
+
+    result: bool
+    """시리즈 소속 판단 결과"""
+    
+    reason: str | None
+    """시리즈 소속 판단 이유
+    
+    Note:
+    이 필드는 디버깅 목적으로만 사용해야 한다.
+    LLM이 제목에서 제거한 요소들을 자연어로 설명한 것으로 형식이 정규화 되어 있지 않아
+    프로그램에 직접 활용하지 않아야 한다.
+    """
+
 class Bridge:
     """LLM을 활용한 도서 시리즈 자동 분류 브릿지 클래스
 
@@ -107,16 +165,18 @@ class Bridge:
                     판매처 정보는 더 정확한 정규화를 위한 부가 정보로 활용 됨
         :return: 정규화된 도서 제목과 처리 내역을 담은 객체
         """
-        prompt = self._repository.find_prompt(schema.PromptCode.TITLE_NORMALIZE)
 
-        _input = json.dumps(dataclasses.asdict(req), separators=(',', ':'), ensure_ascii=False)
-        logging.info(f"제목의 노이즈 제거를 요청 합니다: {_input} (previous_response_id: {prompt.last_dialogue_id})")
+        # 향후 Google Search API를 이용해 판단 근거를 더 추가해 볼 예정으로 코드 중복 유지
+        request_json = json.dumps(dataclasses.asdict(req), separators=(',', ':'), ensure_ascii=False)
+
+        prompt = self._repository.find_prompt(schema.PromptCode.TITLE_NORMALIZE)
+        logging.info(f"제목의 노이즈 제거를 요청 합니다: {request_json} (previous_response_id: {prompt.last_dialogue_id})")
 
         response = self._openai.responses.parse(
             model=prompt.model,
             previous_response_id=prompt.last_dialogue_id,
             text_format=_NormalizeModelResponse,
-            input=_input,
+            input=request_json,
         )
         formated_response = response.output_parsed
 
@@ -129,3 +189,31 @@ class Bridge:
         logging.log(logging.NOTSET, f"{req.title} => {formated_response.reason}")
 
         return normalization
+
+    def series_similar(self, req: SeriesSimilarRequest) -> SeriesSimilar:
+        """신간 도서가 기존 시리즈에 속하는지 여부를 판단한다.
+
+        :param req: 시리즈 소속 여부를 확인하고 싶은 신간 도서와 기존 시리즈 정보를 담은 요청 객체
+        :return: 시리즈 소속 여부
+        """
+        request_json = json.dumps(dataclasses.asdict(req), separators=(',', ':'), ensure_ascii=False)
+
+        prompt = self._repository.find_prompt(schema.PromptCode.SERIES_SIMILARITY)
+        logging.info(f"시리즈 소속 여부를 판단합니다: {request_json} (previous_response_id: {prompt.last_dialogue_id})")
+
+        response = self._openai.responses.parse(
+            model=prompt.model,
+            previous_response_id=prompt.last_dialogue_id,
+            text_format=_SeriesSimilarResponse,
+            input=request_json,
+        )
+        formated_response = response.output_parsed
+
+        similar = SeriesSimilar(
+            result = formated_response.result,
+            reason = formated_response.reason,
+        )
+        logging.info(f"시리즈 소속 결과 (use: {prompt.last_dialogue_id}): {similar})")
+
+        return similar
+

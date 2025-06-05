@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 
 import cfg
 import prompt
-from prompt import NormalizeRequest
+from prompt import NormalizeRequest, SeriesSimilarRequest
 
 runtime_env = cfg.get_runtime_env()
 cfg.set_global_logging_config(runtime_env)
@@ -34,6 +34,14 @@ def normalize():
 
     normalization = series_prompt.normalize(_request)
     return jsonify(normalization)
+
+@app.post("/series-similar")
+def series_similar():
+    body = request.get_json()
+    _request = SeriesSimilarRequest(**body)
+
+    similar = series_prompt.series_similar(_request)
+    return jsonify(similar)
 
 @dataclasses.dataclass
 class _EmbeddingRequest:
